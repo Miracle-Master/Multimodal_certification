@@ -75,6 +75,8 @@ if __name__ == '__main__':
     all_recall =[]
     all_F_score = []
     all_iou = []
+    all_pred =[]
+    all_gt =[]
     for i in range(100):
         print(i)
         globalaccs =[]
@@ -82,6 +84,8 @@ if __name__ == '__main__':
         recalls =[]
         F_scores = []
         ious = []
+        preds = []
+        gts = []
         with torch.no_grad():
             for i, data in enumerate(val_loader):
                 conf_mat = np.zeros((val_dataset.dataset.num_labels, val_dataset.dataset.num_labels), dtype=np.float)
@@ -92,12 +96,17 @@ if __name__ == '__main__':
                 gt = model.label.cpu().int().numpy()
                 _, pred = torch.max(model.output.data.cpu(), 1)
                 pred = pred.float().detach().int().numpy()
-
+                
                 # Resize images to the original size for evaluation
-                image_size = model.get_image_oriSize()
-                oriSize = (image_size[0].item(), image_size[1].item())
+                #image_size = model.get_image_oriSize()
+                #print(image_size)
+                #oriSize = (image_size[0].item(), image_size[1].item())
+                oriSize = [1242,375]
                 gt = np.expand_dims(cv2.resize(np.squeeze(gt, axis=0), oriSize, interpolation=cv2.INTER_NEAREST), axis=0)
                 pred = np.expand_dims(cv2.resize(np.squeeze(pred, axis=0), oriSize, interpolation=cv2.INTER_NEAREST), axis=0)
+                #print(pred[0].shape,np.max(pred),np.min(pred))
+                preds.append(torch.tensor(pred[0]))
+                gts.append(torch.tensor(gt[0]))
                 #print(np.max(gt[0]),np.min(gt[0]))
                 #Image.fromarray(gt[0]*100).show()
                 #Image.fromarray(pred[0]*100).show()
@@ -110,7 +119,8 @@ if __name__ == '__main__':
                 F_scores.append(F_score)
                 ious.append(iou)
                 #print('valid epoch {0:}, iters: {1:}/{2:} '.format(epoch, epoch_iter, len(val_dataset) * valid_opt.batch_size), end='\r')
-
+        all_pred.append(preds)
+        all_gt.append(gts)
         print('valid/global_acc', globalaccs[0:5])
         print('valid/pre', pres[0:5])
         print('valid/recall', recalls[0:5])
@@ -130,7 +140,7 @@ if __name__ == '__main__':
     #all_recall = torch.stack(all_recall)
     #all_F_score = torch.stack(all_F_score)
     #all_iou = torch.stack(all_iou)
-    dict_ = {"all_globalacc":all_globalacc, "all_pre":all_pre, "all_recall":all_recall, "all_F_score":all_F_score, "all_iou":all_iou}
+    dict_ = {"all_pred":all_pred, "all_gt":all_gt}
     if valid_opt.certification_method == "randomized_ablation":
         torch.save(dict_, 'output/'+valid_opt.certification_method+"_ablation-ratio-test="+str(valid_opt.ablation_ratio_test)+'_all_outputs.pth')
     else:

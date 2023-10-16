@@ -151,6 +151,6 @@ if __name__ == '__main__':
         # Save the best model according to the F-score, and record corresponding epoch number in tensorboard
         #if F_score > F_score_max:
         print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))
-        model.save_networks('last')
+        model.save_networks(opt.certification_method)
         F_score_max = F_score
         writer.add_text('best model', str(epoch))
