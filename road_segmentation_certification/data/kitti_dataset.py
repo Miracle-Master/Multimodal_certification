@@ -60,46 +60,38 @@ class kittiCalibInfo():
                 except ValueError:
                     pass
         return data
-"""
+
 #rewrite this function for the baseline (radomized ablation). use test_mode to control whether the ablation percentage is fixed 
 def jointly_ablate_images(img1: Image.Image, img2: Image.Image, percentage: float,test_mode) -> (Image.Image, Image.Image):
     # Convert PIL images to numpy arrays
     arr1 = np.array(img1)
-    arr2 = np.array(img2)
-    if test_mode == False:
+    arr2 = np.array(img2).reshape(img2.shape[0], img2.shape[1], 1)  # Add a third dimension for consistency
+
+    # Check if the height and width dimensions match
+    assert arr1.shape[0] == arr2.shape[0] and arr1.shape[1] == arr2.shape[1], "Height and width dimensions must match."
+
+    if not test_mode:
         percentage = random.uniform(0, percentage)
-    # Verify that the images have the same dimensions
-    assert arr1.shape == arr2.shape, "The two images must have the same dimensions."
 
-    # Stack arrays vertically
-    combined = np.vstack((arr1, arr2))
-
-    # Determine the number of pixels across both images
-    total_pixels = combined.shape[0] * combined.shape[1]
-
-    # Determine the number of pixels to retain
+    # Create a mask for each "pixel" (3 channels in img1 and 1 channel in img2)
+    total_pixels = arr1.shape[0] * arr1.shape[1]
     num_retain = int(total_pixels * percentage)
 
-    # Create an ablation mask
-    mask = np.concatenate((np.ones(num_retain), np.zeros(total_pixels - num_retain)))
-    np.random.shuffle(mask)
-    mask = mask.reshape(combined.shape[0], combined.shape[1], 1)  # add a third dimension
-    mask = np.repeat(mask, 3, axis=2)  # repeat for RGB channels
+    joint_mask = np.concatenate((np.ones(num_retain), np.zeros(total_pixels - num_retain)))
+    np.random.shuffle(joint_mask)
+    joint_mask = joint_mask.reshape(arr1.shape[0], arr1.shape[1])
 
-    # Apply the mask
-    ablated_combined = combined * mask.astype(combined.dtype)
-
-    # Split the ablated_combined array back into individual image arrays
-    split_idx = arr1.shape[0]
-    ablated_arr1 = ablated_combined[:split_idx]
-    ablated_arr2 = ablated_combined[split_idx:]
+    # Apply the mask to each image
+    ablated_arr1 = arr1 * joint_mask[:,:,np.newaxis].astype(arr1.dtype)
+    ablated_arr2 = arr2 * joint_mask[:,:,np.newaxis].astype(arr2.dtype)
 
     # Convert ablated arrays back to PIL images
     ablated_img1 = Image.fromarray(ablated_arr1)
-    ablated_img2 = Image.fromarray(ablated_arr2)
+    ablated_img2 = Image.fromarray(ablated_arr2.squeeze(2).astype(arr2.dtype)/100)
+    #ablated_img1.show()
+    #ablated_img2.show()
+    return ablated_arr1, ablated_arr2.squeeze(2).astype(arr2.dtype)
 
-    return ablated_img1, ablated_img2
-"""
 def randomly_ablate_train(img, ablation_ratio=0.2, ablation_value=0):
     """
     Randomly ablating a given percentage of pixels in the image.
@@ -125,7 +117,8 @@ def randomly_ablate_train(img, ablation_ratio=0.2, ablation_value=0):
             img_array[mask, channel] = ablation_value
     else:
         img_array[mask] = ablation_value
-
+        #print(np.max(img_array),np.min(img_array))
+        
     # Convert back to PIL Image and return
     return img_array
 
@@ -211,16 +204,21 @@ class kittidataset(BaseDataset):
         label = np.zeros((oriHeight, oriWidth), dtype=np.uint8)
         label[label_image[:,:,2] > 0] = 1
         #print(depth_image)
+        #Image.fromarray(depth_image/1000).show()
         if self.phase == "train":
             if self.opt.certification_method == "MMCert":
                 rgb_image = randomly_ablate_train(rgb_image, ablation_ratio=self.opt.ablation_ratio_train, ablation_value=0)
                 depth_image = randomly_ablate_train(depth_image, ablation_ratio=self.opt.ablation_ratio_train, ablation_value=0)
+            else:
+                rgb_image,depth_image = jointly_ablate_images(rgb_image, depth_image, percentage = self.opt.ablation_ratio_train,test_mode = False)
         if self.phase == "test":
             if self.opt.certification_method == "MMCert":
                 #print(rgb_image.shape,depth_image.shape) 
                 #shapes are: (375, 1242, 3) (375, 1242)
                 rgb_image = randomly_ablate_test(rgb_image, ablation_ratio=self.opt.ablation_ratio_test1, ablation_value=0)
                 depth_image = randomly_ablate_test(depth_image, ablation_ratio=self.opt.ablation_ratio_test2, ablation_value=0)
+            else:              
+                rgb_image,depth_image = jointly_ablate_images(rgb_image, depth_image, percentage = self.opt.ablation_ratio_test,test_mode = True)
                 #Image.fromarray(rgb_image).show()
                 #Image.fromarray(depth_image.astype(np.float32)/1000).show()
             #print(rgb_image.shape, label.shape, depth_image.shape)
